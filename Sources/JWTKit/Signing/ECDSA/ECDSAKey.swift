@@ -2,32 +2,82 @@ import CJWTKitBoringSSL
 import Crypto
 import Foundation
 
-public final class ECDSAKey: OpenSSLKey {
+public protocol ECDSASignature {}
+extension P256.Signing.ECDSASignature: ECDSASignature {}
+extension P384.Signing.ECDSASignature: ECDSASignature {}
+extension P521.Signing.ECDSASignature: ECDSASignature {}
+
+public protocol ECPrivateKey {
+    associatedtype PublicKey
+    init<Bytes>(x963Representation: Bytes) throws where Bytes : ContiguousBytes
+    var publicKey: PublicKey { get }
+}
+
+public protocol ECPublicKey {
+    func isValidSignature<S, D>(_ signature: S, for data: D) -> Bool where S : DataProtocol, D : DataProtocol
+}
+
+public protocol EllipticCurve {
+    static func signature<D>(rawRepresentation: D) throws -> ECDSASignature where D : DataProtocol
+    associatedtype PublicKey: ECPublicKey
+    associatedtype PrivateKey: ECPrivateKey
+}
+extension P256: EllipticCurve {
+    public typealias PublicKey = Signing.PublicKey
+    public typealias PrivateKey = Signing.PrivateKey
+    public static func signature<D>(rawRepresentation: D) throws -> ECDSASignature where D : DataProtocol {
+        return try Signing.ECDSASignature(rawRepresentation: rawRepresentation)
+    }
+}
+
+extension P256.Signing.PrivateKey: ECPrivateKey {
+//    public typealias PublicKey = P256.Signing.PublicKey
+}
+
+extension P384: EllipticCurve {
+    public typealias PublicKey = Signing.PublicKey
+    public typealias PrivateKey = Signing.PrivateKey
+    public static func signature<D>(rawRepresentation: D) throws -> ECDSASignature where D : DataProtocol {
+        return try Signing.ECDSASignature(rawRepresentation: rawRepresentation)
+    }
+}
+extension P384.Signing.PrivateKey: ECPrivateKey {}
+extension P521: EllipticCurve {
+    public typealias PublicKey = Signing.PublicKey
+    public typealias PrivateKey = Signing.PrivateKey
+    public static func signature<D>(rawRepresentation: D) throws -> ECDSASignature where D : DataProtocol {
+        return try Signing.ECDSASignature(rawRepresentation: rawRepresentation)
+    }
+}
+extension P521.Signing.PrivateKey: ECPrivateKey {}
+
+public enum Curve {
+    case p256
+    case p384
+    case p521
     
-    public enum Curve {
-        case p256
-        case p384
-        case p521
-        
-        @usableFromInline
-        var cName: Int32 {
-            switch self {
-            case .p256:
-                return NID_X9_62_prime256v1
-            case .p384:
-                return NID_secp384r1
-            case .p521:
-                return NID_secp521r1
-            }
+    @usableFromInline
+    var cName: Int32 {
+        switch self {
+        case .p256:
+            return NID_X9_62_prime256v1
+        case .p384:
+            return NID_secp384r1
+        case .p521:
+            return NID_secp521r1
         }
     }
+}
+
+
+public final class ECDSAKey<CurveType>: OpenSSLKey where CurveType: EllipticCurve {
     
     public static func generate(curve: Curve = .p521) throws -> ECDSAKey {
         let privateKey = P256.Signing.PrivateKey()
         return .init(privateKey: privateKey)
     }
     
-    public static func `public`<Data>(pem data: Data) throws -> ECDSAKey where Data: DataProtocol {
+    public static func `public`<Data, CurveType>(pem data: Data) throws -> ECDSAKey<CurveType> where Data: DataProtocol, CurveType: EllipticCurve {
         let pemString = String(decoding: data, as: UTF8.self)
         let strippedPem = pemString.replacingOccurrences(of: "-----BEGIN PUBLIC KEY-----\n", with: "").replacingOccurrences(of: "-----END PUBLIC KEY-----", with: "").replacingOccurrences(of: "\n", with: "")
         
@@ -50,19 +100,19 @@ public final class ECDSAKey: OpenSSLKey {
         }
         
 //        let curve = ECDSAKey.getCurve(from: c)
-        let keyData = ECDSAKey.convertECKeyToX963Representation(from: c, for: ECDSAKey.Curve.p256)
+        let keyData = ECDSAKey.convertECKeyToX963Representation(from: c, for: Curve.p256)
         return try self.init(privateKey: .init(x963Representation: keyData))
     }
     
-    let publicKey: P256.Signing.PublicKey
-    let privateKey: P256.Signing.PrivateKey?
+    let publicKey: CurveType.PublicKey
+    let privateKey: CurveType.PrivateKey?
     
-    init(publicKey: P256.Signing.PublicKey) {
+    init(publicKey: CurveType.PublicKey) {
         self.publicKey = publicKey
         self.privateKey = nil
     }
     
-    init(privateKey: P256.Signing.PrivateKey) {
+    init(privateKey: CurveType.PrivateKey) {
         self.privateKey = privateKey
         self.publicKey = privateKey.publicKey
     }
@@ -90,7 +140,7 @@ public final class ECDSAKey: OpenSSLKey {
     static func getCurve(from key: OpaquePointer) -> Curve {
         let curveName = CJWTKitBoringSSL_EC_GROUP_get_curve_name(CJWTKitBoringSSL_EC_KEY_get0_group(key))
         switch curveName {
-        case NID_secp256k1:
+        case NID_X9_62_prime256v1:
             return .p256
         case NID_secp384r1:
             return .p384
@@ -135,7 +185,7 @@ extension OpenSSLSupportedNISTCurve {
     }
 }
 
-extension ECDSAKey.Curve: OpenSSLSupportedNISTCurve {
+extension Curve: OpenSSLSupportedNISTCurve {
     @usableFromInline
     var group: BoringSSLEllipticCurveGroup {
         return try! .init(self)

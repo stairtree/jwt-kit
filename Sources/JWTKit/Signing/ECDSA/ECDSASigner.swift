@@ -1,9 +1,8 @@
 import CJWTKitBoringSSL
 import Crypto
 
-internal struct ECDSASigner: JWTAlgorithm, OpenSSLSigner {
-    let key: ECDSAKey
-    let algorithm: OpaquePointer
+internal struct ECDSASigner<CurveType>: JWTAlgorithm where CurveType: EllipticCurve {
+    let key: ECDSAKey<CurveType>
     let name: String
 
     func sign<Plaintext>(_ plaintext: Plaintext) throws -> [UInt8] where Plaintext: DataProtocol {
@@ -19,7 +18,7 @@ internal struct ECDSASigner: JWTAlgorithm, OpenSSLSigner {
     ) throws -> Bool
         where Signature: DataProtocol, Plaintext: DataProtocol
     {
-        let signature = try P256.Signing.ECDSASignature(rawRepresentation: signature)
+        let signature = try CurveType.signature(rawRepresentation: signature)
         return self.key.publicKey.isValidSignature(signature, for: plaintext)
     }
 }

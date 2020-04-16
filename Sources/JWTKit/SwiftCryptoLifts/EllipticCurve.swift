@@ -20,7 +20,7 @@ class BoringSSLEllipticCurveGroup {
     /* private but usableFromInline */ @usableFromInline var _group: OpaquePointer
 
     @usableFromInline
-    init(_ curve: ECDSAKey.Curve) throws {
+    init(_ curve: Curve) throws {
         guard let group = CJWTKitBoringSSL_EC_GROUP_new_by_curve_name(curve.cName) else {
             throw JWTError.signingAlgorithmFailure(OpenSSLError.internalError)
         }
