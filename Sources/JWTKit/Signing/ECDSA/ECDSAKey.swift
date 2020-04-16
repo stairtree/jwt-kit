@@ -27,19 +27,16 @@ public final class ECDSAKey: OpenSSLKey {
         return .init(privateKey: privateKey)
     }
     
-    public static func `public`<Data>(pem data: Data) throws -> ECDSAKey
-        where Data: DataProtocol
-    {
-        //        let c = try self.load(pem: data) { bio in
-        //            CJWTKitBoringSSL_PEM_read_bio_EC_PUBKEY(bio, nil, nil, nil)
-        //        }
-        //        // c is a OpaquePointer to `EC_KEY`
-        //        let publicKey = UnsafePointer<UInt8>(c)
-        //        let publicKeyData = Foundation.Data(bytes: publicKey, count: 33)
-        //        CJWTKitBoringSSL_EC_KEY_free(c)
-        //        return try self.init(privateKey: .init(rawRepresentation: privateKeyData))
-//        fatalError()
-        throw JWTError.signatureVerifictionFailed
+    public static func `public`<Data>(pem data: Data) throws -> ECDSAKey where Data: DataProtocol {
+        let pemString = String(decoding: data, as: UTF8.self)
+        let strippedPem = pemString.replacingOccurrences(of: "-----BEGIN PUBLIC KEY-----\n", with: "").replacingOccurrences(of: "-----END PUBLIC KEY-----", with: "").replacingOccurrences(of: "\n", with: "")
+        
+        guard let data = Foundation.Data(base64Encoded: strippedPem) else {
+            throw JWTError.signatureVerifictionFailed
+        }
+        
+        let key = try ECDSAKey.convertFromPem(data.copyBytes())
+        return .init(publicKey: key)
     }
     
     public static func `private`<Data>(pem data: Data) throws -> ECDSAKey
@@ -52,8 +49,8 @@ public final class ECDSAKey: OpenSSLKey {
             CJWTKitBoringSSL_EC_KEY_free(c)
         }
         
-        let curve = ECDSAKey.getCurve(from: c)
-        let keyData = ECDSAKey.convertECKeyToX963Representation(from: c, for: curve)
+//        let curve = ECDSAKey.getCurve(from: c)
+        let keyData = ECDSAKey.convertECKeyToX963Representation(from: c, for: ECDSAKey.Curve.p256)
         return try self.init(privateKey: .init(x963Representation: keyData))
     }
     
@@ -102,6 +99,25 @@ public final class ECDSAKey: OpenSSLKey {
         default:
             fatalError("Unsupported ECDSA key curve: \(curveName)")
         }
+    }
+    
+    // See https://github.com/apple/swift-crypto/blob/64a1a98e47e6643e6d43d30b87a244483b51d8ad/Tests/CryptoTests/ECDH/BoringSSL/secpECDH_Runner_boring.swift#L64-L83
+    private static func convertFromPem(_ derBytes: [UInt8]) throws -> P256.Signing.PublicKey {
+        // Bad news everybody. Using the EC DER parsing from OpenSSL limits our ability to tell the difference
+        // between an invalid SPKI layout (which we don't care about, as the production library doesn't support DER-encoded
+        // EC keys) and a SPKI layout that is syntactically valid but doesn't represent a valid point on the curve. We _do_
+        // care about passing this into the production library.
+        //
+        // This means we've only one option: we have to implement "just enough" ASN.1.
+        var derBytes = derBytes[...]
+        let spki = try ASN1SubjectPublicKeyInfo(fromASN1: &derBytes)
+        guard derBytes.count == 0, spki.algorithm.algorithm == ASN1ObjectIdentifier.AlgorithmIdentifier.idEcPublicKey else {
+            throw JWTError.signatureVerifictionFailed
+        }
+
+        // Ok, the bitstring we are holding is the X963 representation of the public key. Try to create it.
+        let key = try P256.Signing.PublicKey(x963Representation: spki.subjectPublicKey)
+        return key
     }
     
 }
