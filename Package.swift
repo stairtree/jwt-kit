@@ -17,8 +17,10 @@ let package = Package(
     ],
     targets: [
         .target(name: "CJWTKitBoringSSL"),
+        .target(name: "CJWTKitBoringSSLShims", dependencies: ["CJWTKitBoringSSL"]),
         .target(name: "JWTKit", dependencies: [
             .target(name: "CJWTKitBoringSSL"),
+            .target(name: "CJWTKitBoringSSLShims"),
             .product(name: "Crypto", package: "swift-crypto"),
         ]),
         .testTarget(name: "JWTKitTests", dependencies: [

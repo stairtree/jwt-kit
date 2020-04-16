@@ -4,12 +4,13 @@ protocol OpenSSLSigner {
     var algorithm: OpaquePointer { get }
 }
 
-private enum OpenSSLError: Error {
+internal enum OpenSSLError: Error {
     case digestInitializationFailure
     case digestUpdateFailure
     case digestFinalizationFailure
     case bioPutsFailure
     case bioConversionFailure
+    case internalError
 }
 
 extension OpenSSLSigner {
@@ -39,21 +40,17 @@ extension OpenSSLSigner {
 protocol OpenSSLKey { }
 
 extension OpenSSLKey {
-    static func load<Data, T>(pem data: Data, _ closure: (UnsafeMutablePointer<BIO>) -> (T?)) throws -> T
-        where Data: DataProtocol
-    {
-        let bio = CJWTKitBoringSSL_BIO_new(CJWTKitBoringSSL_BIO_s_mem())
-        defer { CJWTKitBoringSSL_BIO_free(bio) }
+    static func load<Data, T>(pem data: Data, _ closure: (UnsafeMutablePointer<BIO>) -> (T?)) throws -> T where Data: DataProtocol {
+        return try data.copyBytes().withUnsafeBytes { ptr in
+            let bio = CJWTKitBoringSSL_BIO_new_mem_buf(ptr.baseAddress, CInt(ptr.count))!
+            defer {
+                CJWTKitBoringSSL_BIO_free(bio)
+            }
+            guard let c = closure(bio) else {
+                throw JWTError.signingAlgorithmFailure(OpenSSLError.bioConversionFailure)
+            }
 
-        guard (data.copyBytes() + [0]).withUnsafeBytes({ pointer in
-            CJWTKitBoringSSL_BIO_puts(bio, pointer.baseAddress?.assumingMemoryBound(to: Int8.self))
-        }) >= 0 else {
-            throw JWTError.signingAlgorithmFailure(OpenSSLError.bioPutsFailure)
+            return c
         }
-
-        guard let bioPtr = bio, let c = closure(bioPtr) else {
-            throw JWTError.signingAlgorithmFailure(OpenSSLError.bioConversionFailure)
-        }
-        return c
     }
 }
