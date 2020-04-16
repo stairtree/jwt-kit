@@ -23,14 +23,8 @@ public final class ECDSAKey: OpenSSLKey {
     }
     
     public static func generate(curve: Curve = .p521) throws -> ECDSAKey {
-        //        guard let c = CJWTKitBoringSSL_EC_KEY_new_by_curve_name(curve.cName) else {
-        //            throw JWTError.signingAlgorithmFailure(ECDSAError.newKeyByCurveFailure)
-        //        }
-        //        guard CJWTKitBoringSSL_EC_KEY_generate_key(c) != 0 else {
-        //            throw JWTError.signingAlgorithmFailure(ECDSAError.generateKeyFailure)
-        //        }
-        //        return .init(c)
-        fatalError()
+        let privateKey = P256.Signing.PrivateKey()
+        return .init(privateKey: privateKey)
     }
     
     public static func `public`<Data>(pem data: Data) throws -> ECDSAKey
@@ -44,7 +38,8 @@ public final class ECDSAKey: OpenSSLKey {
         //        let publicKeyData = Foundation.Data(bytes: publicKey, count: 33)
         //        CJWTKitBoringSSL_EC_KEY_free(c)
         //        return try self.init(privateKey: .init(rawRepresentation: privateKeyData))
-        fatalError()
+//        fatalError()
+        throw JWTError.signatureVerifictionFailed
     }
     
     public static func `private`<Data>(pem data: Data) throws -> ECDSAKey
@@ -53,14 +48,13 @@ public final class ECDSAKey: OpenSSLKey {
         let c = try self.load(pem: data) { bio in
             return CJWTKitBoringSSL_PEM_read_bio_ECPrivateKey(bio, nil, nil, nil)
         }
-        // c is a OpaquePointer to `EC_KEY`, need to convert it to `EC_POINT`
-        CJWTKitBoringSSL_EC_KEY_get0_public_key(c)
+        defer {
+            CJWTKitBoringSSL_EC_KEY_free(c)
+        }
         
-        
-        let privateKey = UnsafePointer<UInt8>(c)
-        let privateKeyData = Foundation.Data(bytes: privateKey, count: 32)
-        CJWTKitBoringSSL_EC_KEY_free(c)
-        return try self.init(privateKey: .init(rawRepresentation: privateKeyData))
+        let curve = ECDSAKey.getCurve(from: c)
+        let keyData = ECDSAKey.convertECKeyToX963Representation(from: c, for: curve)
+        return try self.init(privateKey: .init(x963Representation: keyData))
     }
     
     let publicKey: P256.Signing.PublicKey
@@ -77,7 +71,7 @@ public final class ECDSAKey: OpenSSLKey {
     }
     
     // See https://github.com/apple/swift-crypto/blob/cce48362a4bfa167cd9ac2acca522f23f2fe1561/Sources/Crypto/Keys/EC/BoringSSL/NISTCurvesKeys_boring.swift
-    func convertECKeyToX963Representation(from key: OpaquePointer, for curve: OpenSSLSupportedNISTCurve.Type) -> Data {
+    static func convertECKeyToX963Representation(from key: OpaquePointer, for curve: OpenSSLSupportedNISTCurve) -> Data {
         // Get group and pointByteCount
         let group = curve.group
         let pointByteCount = group.coordinateByteCount
@@ -95,18 +89,41 @@ public final class ECDSAKey: OpenSSLKey {
         
         return bytes
     }
+
+    static func getCurve(from key: OpaquePointer) -> Curve {
+        let curveName = CJWTKitBoringSSL_EC_GROUP_get_curve_name(CJWTKitBoringSSL_EC_KEY_get0_group(key))
+        switch curveName {
+        case NID_secp256k1:
+            return .p256
+        case NID_secp384r1:
+            return .p384
+        case NID_secp521r1:
+            return .p521
+        default:
+            fatalError("Unsupported ECDSA key curve: \(curveName)")
+        }
+    }
     
 }
 
 @usableFromInline
 protocol OpenSSLSupportedNISTCurve {
     @inlinable
-    static var group: BoringSSLEllipticCurveGroup { get }
+    var group: BoringSSLEllipticCurveGroup { get }
 }
 
 extension OpenSSLSupportedNISTCurve {
     @inlinable
-    static var coordinateByteCount: Int {
+    var coordinateByteCount: Int {
         return self.group.coordinateByteCount
     }
+}
+
+extension ECDSAKey.Curve: OpenSSLSupportedNISTCurve {
+    @usableFromInline
+    var group: BoringSSLEllipticCurveGroup {
+        return try! .init(self)
+    }
+    
+    
 }
