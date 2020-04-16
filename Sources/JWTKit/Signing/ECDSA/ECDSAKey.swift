@@ -134,36 +134,6 @@ extension OpenSSLSupportedNISTCurve {
 }
 
 @usableFromInline
-class BoringSSLEllipticCurveGroup {
-    /* private but usableFromInline */ @usableFromInline var _group: OpaquePointer
-    
-    @usableFromInline
-    init(_ curve: ECDSAKey.Curve) throws {
-        guard let group = CJWTKitBoringSSL_EC_GROUP_new_by_curve_name(curve.cName) else {
-            throw JWTError.signingAlgorithmFailure(OpenSSLError.bioConversionFailure)
-        }
-        
-        self._group = group
-    }
-    
-    deinit {
-        CJWTKitBoringSSL_EC_GROUP_free(self._group)
-    }
-    
-    @inlinable
-    func withUnsafeGroupPointer<T>(_ body: (OpaquePointer) throws -> T) rethrows -> T {
-        return try body(self._group)
-    }
-}
-
-extension BoringSSLEllipticCurveGroup {
-    @usableFromInline
-    var coordinateByteCount: Int {
-        return (Int(CJWTKitBoringSSL_EC_GROUP_get_degree(self._group)) + 7) / 8
-    }
-}
-
-@usableFromInline
 class EllipticCurvePoint {
     /* private but @usableFromInline */ @usableFromInline var _basePoint: OpaquePointer
     init(copying pointer: OpaquePointer, on group: BoringSSLEllipticCurveGroup) throws {
