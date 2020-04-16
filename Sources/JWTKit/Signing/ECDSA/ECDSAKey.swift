@@ -96,28 +96,6 @@ public final class ECDSAKey: OpenSSLKey {
         return bytes
     }
     
-    
-    
-    //    var x963Representation: Data {
-    //        // The x9.63 private key format is a discriminator byte (0x4) concatenated with the X and Y points
-    //        // of the public key, and the K value of the secret scalar. Let's load that in.
-    //        let group = Curve.group
-    //        let pointByteCount = group.coordinateByteCount
-    //        let privateKey = self.privateKeyScalar
-    //        let (x, y) = try! self.publicKeyPoint.affineCoordinates(group: group)
-    //
-    //        var bytes = Data()
-    //        bytes.reserveCapacity(1 + (group.coordinateByteCount * 3))
-    //
-    //        // These try!s should only trigger in the case of internal consistency errors.
-    //        bytes.append(0x4)
-    //        try! bytes.append(bytesOf: x, paddedToSize: pointByteCount)
-    //        try! bytes.append(bytesOf: y, paddedToSize: pointByteCount)
-    //        try! bytes.append(bytesOf: privateKey, paddedToSize: pointByteCount)
-    //
-    //        return bytes
-    //    }
-    
 }
 
 @usableFromInline
@@ -130,47 +108,5 @@ extension OpenSSLSupportedNISTCurve {
     @inlinable
     static var coordinateByteCount: Int {
         return self.group.coordinateByteCount
-    }
-}
-
-@usableFromInline
-class EllipticCurvePoint {
-    /* private but @usableFromInline */ @usableFromInline var _basePoint: OpaquePointer
-    init(copying pointer: OpaquePointer, on group: BoringSSLEllipticCurveGroup) throws {
-        self._basePoint = try group.withUnsafeGroupPointer { groupPtr in
-            guard let basePoint = CJWTKitBoringSSL_EC_POINT_dup(pointer, groupPtr) else {
-                throw JWTError.signingAlgorithmFailure(OpenSSLError.bioConversionFailure)
-            }
-            return basePoint
-        }
-    }
-    
-    deinit {
-        CJWTKitBoringSSL_EC_POINT_free(self._basePoint)
-    }
-}
-
-extension EllipticCurvePoint {
-    @inlinable
-    func withPointPointer<T>(_ body: (OpaquePointer) throws -> T) rethrows -> T {
-        return try body(self._basePoint)
-    }
-
-    @usableFromInline
-    func affineCoordinates(group: BoringSSLEllipticCurveGroup) throws -> (x: ArbitraryPrecisionInteger, y: ArbitraryPrecisionInteger) {
-        var x = ArbitraryPrecisionInteger()
-        var y = ArbitraryPrecisionInteger()
-
-        try x.withUnsafeMutableBignumPointer { xPtr in
-            try y.withUnsafeMutableBignumPointer { yPtr in
-                try group.withUnsafeGroupPointer { groupPtr in
-                    guard CJWTKitBoringSSL_EC_POINT_get_affine_coordinates_GFp(groupPtr, self._basePoint, xPtr, yPtr, nil) != 0 else {
-                        throw JWTError.signingAlgorithmFailure(OpenSSLError.internalError)
-                    }
-                }
-            }
-        }
-
-        return (x: x, y: y)
     }
 }
