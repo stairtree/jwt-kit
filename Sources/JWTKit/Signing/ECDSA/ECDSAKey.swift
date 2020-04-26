@@ -14,14 +14,16 @@ public protocol ECPrivateKey {
 }
 
 public protocol ECPublicKey {
-    func isValidSignature<S, D>(_ signature: S, for data: D) -> Bool where S : DataProtocol, D : DataProtocol
+    associatedtype S: ECDSASignature
+    func isValidSignature<D>(_ signature: S, for data: D) -> Bool where D : DataProtocol
 }
 
 public protocol EllipticCurve {
     static func signature<D>(rawRepresentation: D) throws -> ECDSASignature where D : DataProtocol
     associatedtype PublicKey: ECPublicKey
-    associatedtype PrivateKey: ECPrivateKey
+    associatedtype PrivateKey: ECPrivateKey where PrivateKey.PublicKey == PublicKey
 }
+
 extension P256: EllipticCurve {
     public typealias PublicKey = Signing.PublicKey
     public typealias PrivateKey = Signing.PrivateKey
@@ -29,10 +31,8 @@ extension P256: EllipticCurve {
         return try Signing.ECDSASignature(rawRepresentation: rawRepresentation)
     }
 }
-
-extension P256.Signing.PrivateKey: ECPrivateKey {
-//    public typealias PublicKey = P256.Signing.PublicKey
-}
+extension P256.Signing.PrivateKey: ECPrivateKey {}
+extension P256.Signing.PublicKey: ECPublicKey {}
 
 extension P384: EllipticCurve {
     public typealias PublicKey = Signing.PublicKey
@@ -42,6 +42,8 @@ extension P384: EllipticCurve {
     }
 }
 extension P384.Signing.PrivateKey: ECPrivateKey {}
+extension P384.Signing.PublicKey: ECPublicKey {}
+
 extension P521: EllipticCurve {
     public typealias PublicKey = Signing.PublicKey
     public typealias PrivateKey = Signing.PrivateKey
@@ -50,6 +52,7 @@ extension P521: EllipticCurve {
     }
 }
 extension P521.Signing.PrivateKey: ECPrivateKey {}
+extension P521.Signing.PublicKey: ECPublicKey {}
 
 public enum Curve {
     case p256
@@ -73,6 +76,10 @@ public enum Curve {
 public final class ECDSAKey<CurveType>: OpenSSLKey where CurveType: EllipticCurve {
     
     public static func generate(curve: Curve = .p521) throws -> ECDSAKey {
+        // This errors because there's no generic constraint to require CurveType == P256
+        // To do this generically, need to be able to validate `CurveType` corresponds to `curve`,
+        //  there's no protocol requirement that can do this right now.
+        // There's also no protocol requirement of a private key initializer, so can't do `CurveType.PrivateKey()`
         let privateKey = P256.Signing.PrivateKey()
         return .init(privateKey: privateKey)
     }
