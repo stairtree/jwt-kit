@@ -80,8 +80,18 @@ public final class ECDSAKey<CurveType>: OpenSSLKey where CurveType: EllipticCurv
         // To do this generically, need to be able to validate `CurveType` corresponds to `curve`,
         //  there's no protocol requirement that can do this right now.
         // There's also no protocol requirement of a private key initializer, so can't do `CurveType.PrivateKey()`
-        let privateKey = P256.Signing.PrivateKey()
-        return .init(privateKey: privateKey)
+        switch curve {
+        case .p256:
+            let privateKey = P256.Signing.PrivateKey()
+            return .init(privateKey: privateKey)
+        case .p384:
+            let privateKey = P384.Signing.PrivateKey()
+            return .init(privateKey: privateKey)
+        case .p521:
+            let privateKey = P521.Signing.PrivateKey()
+            return .init(privateKey: privateKey)
+        }
+        
     }
     
     public static func `public`<Data, CurveType>(pem data: Data) throws -> ECDSAKey<CurveType> where Data: DataProtocol, CurveType: EllipticCurve {
