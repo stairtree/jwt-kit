@@ -2,14 +2,17 @@ name: Upstream sync
 
 on:
   schedule:
-    - cron: '* 0/6 * * *'
+    - cron: '0 */6 * * *'
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-        with: { ref: 'master', fetch-depth: 0 }
+        with:
+          ref: 'main'
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN }}
       - run: git config user.email 'upstream-sync@work.flow' && git config user.name 'Upstream Sync Workflow'
-      - run: git pull --rebase --tags "https://github.com/vapor/$(basename ${GITHUB_REPOSITORY}).git" master
-      - run: git push --force --tags origin master
+      - run: git pull --rebase --tags "https://github.com/vapor/$(basename ${GITHUB_REPOSITORY}).git" main
+      - run: git push --force --tags origin main
